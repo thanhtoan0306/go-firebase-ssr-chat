@@ -106,6 +106,34 @@
           }
         });
 
+        async function readClipboardText() {
+          if (navigator.clipboard && window.isSecureContext) {
+            return await navigator.clipboard.readText();
+          }
+          return "";
+        }
+
+        document.addEventListener("click", async (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest(".pastebtn") : null;
+          if (!btn) return;
+          const sel = btn.getAttribute("data-paste-target") || "";
+          const target = sel ? document.querySelector(sel) : null;
+          if (!target) return;
+
+          try {
+            const clip = await readClipboardText();
+            if (typeof clip === "string" && clip.length) {
+              const before = target.value || "";
+              const next = before ? before + (before.endsWith("\n") ? "" : "\n") + clip : clip;
+              target.value = next;
+              target.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            target.focus();
+          } catch (_) {
+            target.focus();
+          }
+        });
+
         function initSearchUI() {
           const input = document.getElementById("search");
           const clearBtn = document.getElementById("clearSearch");

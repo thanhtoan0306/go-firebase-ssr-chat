@@ -180,6 +180,31 @@ a:hover{ color:var(--gc-text); }
   bottom: 0;
 }
 
+.pastebtn{
+  flex: 0 0 auto;
+  border: 1px solid rgba(15, 23, 42, .10);
+  background: rgba(255,255,255,.92);
+  color: rgba(15, 23, 42, .58);
+  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.pastebtn:hover{
+  color: rgba(15, 23, 42, .84);
+  border-color: rgba(26, 115, 232, .25);
+  background: rgba(26, 115, 232, .06);
+}
+.pastebtn svg{
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
 input, textarea{
   width:100%;
   border-radius: 18px;

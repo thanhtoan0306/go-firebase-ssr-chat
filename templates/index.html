@@ -38,7 +38,12 @@
       hx-post="/send"
       hx-target="#messages"
       hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.successful){window.__chatForceScroll=true; this.querySelector('textarea[name=text]')?.focus();}">
+      hx-on::after-request="if(event.detail.successful){window.__chatForceScroll=true; const ta=this.querySelector('textarea[name=text]'); if(ta){ta.value=''; ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus();}}">
+      <button class="pastebtn" type="button" aria-label="Paste from clipboard" data-paste-target="textarea[name=text]">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M16 2H8a2 2 0 0 0-2 2v2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V6a4 4 0 0 0-4-4Zm-8 4V4h8a2 2 0 0 1 2 2v11h-2V8a2 2 0 0 0-2-2H8Zm6 14H5V10h9v10Zm0-12H8V8h6v0Z"/>
+        </svg>
+      </button>
       <textarea class="text" name="text" placeholder="Type a message…" maxlength="2000" required rows="2"></textarea>
       <button class="send" type="submit">Send</button>
     </form>
