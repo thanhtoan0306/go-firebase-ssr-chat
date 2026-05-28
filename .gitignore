@@ -1,0 +1,12 @@
+.DS_Store
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+# Env / creds
+.env
+serviceAccount.json
+

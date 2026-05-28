@@ -1,0 +1,41 @@
+{{template "layout.html" .}}
+
+{{define "title"}}Chat{{end}}
+
+{{define "body"}}
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="dot"></div>
+      <div>
+        <div class="name">Go SSR Chat</div>
+        <div class="sub">Server-rendered + Firestore</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="card">
+    <section class="messages" id="messages"
+      hx-get="/messages"
+      hx-trigger="every 2s"
+      hx-swap="innerHTML">
+      {{template "messages.html" .}}
+    </section>
+
+    <form class="composer"
+      hx-post="/send"
+      hx-target="#messages"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful){this.reset();}">
+      <input class="author" name="author" placeholder="Name (optional)" maxlength="60" autocomplete="nickname" />
+      <textarea class="text" name="text" placeholder="Type a message…" maxlength="2000" required rows="2"></textarea>
+      <button class="send" type="submit">Send</button>
+    </form>
+  </main>
+
+  <footer class="foot">
+    <a href="/messages" class="muted">Messages partial</a>
+  </footer>
+</div>
+{{end}}
+

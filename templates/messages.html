@@ -1,0 +1,18 @@
+{{define "messages.html"}}
+  <div class="msglist">
+    {{if .Messages}}
+      {{range .Messages}}
+        <article class="msg" data-id="{{.ID}}">
+          <div class="meta">
+            <span class="author">{{if .Author}}{{.Author}}{{else}}Anonymous{{end}}</span>
+            <span class="time">{{since .CreatedAt}}</span>
+          </div>
+          <div class="text">{{.Text}}</div>
+        </article>
+      {{end}}
+    {{else}}
+      <div class="empty">No messages yet. Say hi.</div>
+    {{end}}
+  </div>
+{{end}}
+
