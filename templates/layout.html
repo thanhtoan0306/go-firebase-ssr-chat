@@ -7,6 +7,78 @@
     <title>{{block "title" .}}App{{end}}</title>
     <link rel="stylesheet" href="/static/app.css" />
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script>
+      (function () {
+        const NAME_KEY = "chat.author";
+
+        function normalizeName(s) {
+          return (s || "").trim().toLowerCase();
+        }
+
+        function applyMeStyles(root) {
+          const me = normalizeName(localStorage.getItem(NAME_KEY) || "");
+          if (!me) return;
+          (root || document).querySelectorAll(".msg[data-author]").forEach((el) => {
+            const a = normalizeName(el.getAttribute("data-author") || "");
+            if (a && a === me) el.classList.add("me");
+          });
+        }
+
+        function initAuthorInput() {
+          const input = document.getElementById("author");
+          if (!input) return;
+          const saved = localStorage.getItem(NAME_KEY);
+          if (saved && !input.value) input.value = saved;
+          input.addEventListener("change", () => {
+            const v = (input.value || "").trim();
+            if (v) localStorage.setItem(NAME_KEY, v);
+          });
+          input.addEventListener("blur", () => {
+            const v = (input.value || "").trim();
+            if (v) localStorage.setItem(NAME_KEY, v);
+          });
+        }
+
+        async function copyText(text) {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+          }
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+
+        document.addEventListener("click", async (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest(".copybtn") : null;
+          if (!btn) return;
+
+          const text = btn.getAttribute("data-copy-text") || "";
+          try {
+            await copyText(text);
+            btn.classList.add("copied");
+            window.setTimeout(() => btn.classList.remove("copied"), 900);
+          } catch (_) {
+            // ignore
+          }
+        });
+
+        document.addEventListener("htmx:afterSwap", (e) => {
+          applyMeStyles(e.target);
+        });
+
+        document.addEventListener("DOMContentLoaded", () => {
+          initAuthorInput();
+          applyMeStyles(document);
+        });
+      })();
+    </script>
   </head>
   <body>
     {{block "body" .}}{{end}}

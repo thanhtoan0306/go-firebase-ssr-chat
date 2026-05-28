@@ -5,6 +5,7 @@ bin/
 *.exe
 *.test
 *.out
+.go/
 
 # Env / creds
 .env

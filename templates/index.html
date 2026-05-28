@@ -26,8 +26,8 @@
       hx-post="/send"
       hx-target="#messages"
       hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.successful){this.reset();}">
-      <input class="author" name="author" placeholder="Name (optional)" maxlength="60" autocomplete="nickname" />
+      hx-on::after-request="if(event.detail.successful){this.querySelector('textarea[name=text]')?.focus();}">
+      <input class="author" id="author" name="author" placeholder="Name (optional)" maxlength="60" autocomplete="nickname" />
       <textarea class="text" name="text" placeholder="Type a message…" maxlength="2000" required rows="2"></textarea>
       <button class="send" type="submit">Send</button>
     </form>

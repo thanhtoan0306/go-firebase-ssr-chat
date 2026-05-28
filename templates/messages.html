@@ -2,12 +2,26 @@
   <div class="msglist">
     {{if .Messages}}
       {{range .Messages}}
-        <article class="msg" data-id="{{.ID}}">
-          <div class="meta">
-            <span class="author">{{if .Author}}{{.Author}}{{else}}Anonymous{{end}}</span>
-            <span class="time">{{since .CreatedAt}}</span>
+        <article class="msg" data-id="{{.ID}}" data-author="{{.Author}}">
+          <div class="msgrow">
+            <div class="msgmain">
+              <div class="meta">
+                <span class="author">{{if .Author}}{{.Author}}{{else}}Anonymous{{end}}</span>
+                <span class="time">{{since .CreatedAt}}</span>
+              </div>
+              <div class="text">{{.Text}}</div>
+            </div>
+
+            <button
+              class="copybtn"
+              type="button"
+              aria-label="Copy message"
+              data-copy-text="{{.Text}}">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1Zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H10V7h9v14Z"/>
+              </svg>
+            </button>
           </div>
-          <div class="text">{{.Text}}</div>
         </article>
       {{end}}
     {{else}}
