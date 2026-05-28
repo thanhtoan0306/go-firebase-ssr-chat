@@ -10,7 +10,7 @@
                 <span class="time">{{since .CreatedAt}}</span>
                 <span class="timestamp" hidden>{{.CreatedAt.Local.Format "2006-01-02 15:04:05"}}</span>
               </div>
-              <div class="text">{{.Text}}</div>
+              <div class="text">{{linkify .Text}}</div>
             </div>
 
             <div class="msgactions">

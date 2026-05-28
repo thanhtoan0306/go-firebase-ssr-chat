@@ -59,6 +59,10 @@
             if (!textEl.hasAttribute("data-raw")) {
               textEl.setAttribute("data-raw", textEl.textContent || "");
             }
+            if (!textEl.hasAttribute("data-html")) {
+              // Preserve original server-rendered HTML (e.g. linkified URLs).
+              textEl.setAttribute("data-html", textEl.innerHTML || "");
+            }
             const raw = textEl.getAttribute("data-raw") || "";
             const rawLower = raw.toLowerCase();
 
@@ -66,7 +70,9 @@
             msg.classList.toggle("hidden", !matches);
 
             if (!qn) {
-              textEl.textContent = raw;
+              const html = textEl.getAttribute("data-html");
+              if (html != null) textEl.innerHTML = html;
+              else textEl.textContent = raw;
               return;
             }
 

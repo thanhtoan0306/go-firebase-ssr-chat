@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"regexp"
 	"io/fs"
 	"log"
 	"net/http"
@@ -136,6 +137,9 @@ func newApp(ctx context.Context) (*App, error) {
 				return plural(int(d.Hours()), "hour")
 			}
 			return t.Local().Format("2006-01-02 15:04")
+		},
+		"linkify": func(s string) template.HTML {
+			return linkifyText(s)
 		},
 	}).ParseFS(assetsFS, "templates/*.html")
 	if err != nil {
@@ -339,4 +343,42 @@ func plural(n int, unit string) string {
 		return "1 " + unit + " ago"
 	}
 	return strconv.Itoa(n) + " " + unit + "s ago"
+}
+
+var urlRe = regexp.MustCompile(`(?i)\b((?:https?://|www\.)[^\s<>"']+[^\s<>"'.,;:!?])`)
+
+func linkifyText(s string) template.HTML {
+	if s == "" {
+		return template.HTML("")
+	}
+
+	matches := urlRe.FindAllStringIndex(s, -1)
+	if len(matches) == 0 {
+		return template.HTML(template.HTMLEscapeString(s))
+	}
+
+	var b strings.Builder
+	b.Grow(len(s) + 32)
+	last := 0
+	for _, m := range matches {
+		start, end := m[0], m[1]
+		if start > last {
+			b.WriteString(template.HTMLEscapeString(s[last:start]))
+		}
+		raw := s[start:end]
+		href := raw
+		if strings.HasPrefix(strings.ToLower(href), "www.") {
+			href = "https://" + href
+		}
+		b.WriteString(`<a class="autolink" href="`)
+		b.WriteString(template.HTMLEscapeString(href))
+		b.WriteString(`" target="_blank" rel="noopener noreferrer">`)
+		b.WriteString(template.HTMLEscapeString(raw))
+		b.WriteString(`</a>`)
+		last = end
+	}
+	if last < len(s) {
+		b.WriteString(template.HTMLEscapeString(s[last:]))
+	}
+	return template.HTML(b.String())
 }
