@@ -12,6 +12,18 @@
         <div class="sub">Server-rendered + Firestore</div>
       </div>
     </div>
+    <div class="toptools">
+      <input
+        class="search"
+        id="search"
+        name="search"
+        type="search"
+        placeholder="Search messages…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="clearsearch" type="button" id="clearSearch" aria-label="Clear search">Clear</button>
+    </div>
   </header>
 
   <main class="card">
@@ -26,8 +38,7 @@
       hx-post="/send"
       hx-target="#messages"
       hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.successful){this.querySelector('textarea[name=text]')?.focus();}">
-      <input class="author" id="author" name="author" placeholder="Name (optional)" maxlength="60" autocomplete="nickname" />
+      hx-on::after-request="if(event.detail.successful){window.__chatForceScroll=true; this.querySelector('textarea[name=text]')?.focus();}">
       <textarea class="text" name="text" placeholder="Type a message…" maxlength="2000" required rows="2"></textarea>
       <button class="send" type="submit">Send</button>
     </form>

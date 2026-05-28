@@ -9,33 +9,70 @@
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script>
       (function () {
-        const NAME_KEY = "chat.author";
+        const SEARCH_KEY = "chat.search";
+        const SHOULD_STICK_KEY = "chat.stickToBottom";
 
-        function normalizeName(s) {
-          return (s || "").trim().toLowerCase();
+        function escapeHtml(s) {
+          return (s || "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
         }
 
-        function applyMeStyles(root) {
-          const me = normalizeName(localStorage.getItem(NAME_KEY) || "");
-          if (!me) return;
-          (root || document).querySelectorAll(".msg[data-author]").forEach((el) => {
-            const a = normalizeName(el.getAttribute("data-author") || "");
-            if (a && a === me) el.classList.add("me");
-          });
+        function isNearBottom(el, thresholdPx) {
+          if (!el) return false;
+          const threshold = typeof thresholdPx === "number" ? thresholdPx : 80;
+          return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
         }
 
-        function initAuthorInput() {
-          const input = document.getElementById("author");
+        function scrollToBottom(el) {
+          if (!el) return;
+          el.scrollTop = el.scrollHeight;
+        }
+
+        function getSearchQuery() {
+          const input = document.getElementById("search");
+          return input ? (input.value || "").trim() : "";
+        }
+
+        function setSearchQuery(v) {
+          const input = document.getElementById("search");
           if (!input) return;
-          const saved = localStorage.getItem(NAME_KEY);
-          if (saved && !input.value) input.value = saved;
-          input.addEventListener("change", () => {
-            const v = (input.value || "").trim();
-            if (v) localStorage.setItem(NAME_KEY, v);
-          });
-          input.addEventListener("blur", () => {
-            const v = (input.value || "").trim();
-            if (v) localStorage.setItem(NAME_KEY, v);
+          input.value = v || "";
+        }
+
+        function applySearch(root) {
+          const q = getSearchQuery();
+          try {
+            localStorage.setItem(SEARCH_KEY, q);
+          } catch (_) {}
+
+          const msgs = (root || document).querySelectorAll(".msg");
+          const qn = q.toLowerCase();
+          msgs.forEach((msg) => {
+            const author = (msg.getAttribute("data-author") || "").toLowerCase();
+            const textEl = msg.querySelector(".text");
+            if (!textEl) return;
+
+            if (!textEl.hasAttribute("data-raw")) {
+              textEl.setAttribute("data-raw", textEl.textContent || "");
+            }
+            const raw = textEl.getAttribute("data-raw") || "";
+            const rawLower = raw.toLowerCase();
+
+            const matches = !qn || rawLower.includes(qn) || author.includes(qn);
+            msg.classList.toggle("hidden", !matches);
+
+            if (!qn) {
+              textEl.textContent = raw;
+              return;
+            }
+
+            const escaped = escapeHtml(raw);
+            const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+            textEl.innerHTML = escaped.replace(re, (m) => "<mark>" + m + "</mark>");
           });
         }
 
@@ -69,13 +106,75 @@
           }
         });
 
+        function initSearchUI() {
+          const input = document.getElementById("search");
+          const clearBtn = document.getElementById("clearSearch");
+          if (!input) return;
+
+          try {
+            const saved = localStorage.getItem(SEARCH_KEY);
+            if (saved && !input.value) input.value = saved;
+          } catch (_) {}
+
+          const run = () => applySearch(document);
+          input.addEventListener("input", run);
+          input.addEventListener("search", run);
+          if (clearBtn) {
+            clearBtn.addEventListener("click", () => {
+              setSearchQuery("");
+              applySearch(document);
+              input.focus();
+            });
+          }
+        }
+
+        function initStickToBottom() {
+          const messagesEl = document.getElementById("messages");
+          if (!messagesEl) return;
+          messagesEl.addEventListener("scroll", () => {
+            try {
+              localStorage.setItem(SHOULD_STICK_KEY, isNearBottom(messagesEl) ? "1" : "0");
+            } catch (_) {}
+          }, { passive: true });
+        }
+
+        // Remember if user was near bottom before HTMX swaps in updates.
+        document.addEventListener("htmx:beforeSwap", (e) => {
+          const messagesEl = document.getElementById("messages");
+          if (!messagesEl) return;
+          if (e.target !== messagesEl) return;
+          messagesEl.dataset.wasNearBottom = isNearBottom(messagesEl) ? "1" : "0";
+        });
+
         document.addEventListener("htmx:afterSwap", (e) => {
-          applyMeStyles(e.target);
+          applySearch(e.target);
+
+          const messagesEl = document.getElementById("messages");
+          if (!messagesEl) return;
+          if (e.target !== messagesEl) return;
+
+          const force = !!window.__chatForceScroll;
+          window.__chatForceScroll = false;
+          const wasNear = (messagesEl.dataset.wasNearBottom || "") === "1";
+          let shouldStick = wasNear;
+          try {
+            const savedStick = localStorage.getItem(SHOULD_STICK_KEY);
+            if (savedStick === "1") shouldStick = true;
+          } catch (_) {}
+
+          if (force || shouldStick) scrollToBottom(messagesEl);
         });
 
         document.addEventListener("DOMContentLoaded", () => {
-          initAuthorInput();
-          applyMeStyles(document);
+          initSearchUI();
+          initStickToBottom();
+          applySearch(document);
+
+          const messagesEl = document.getElementById("messages");
+          if (messagesEl) {
+            // Always start at latest message on first load.
+            scrollToBottom(messagesEl);
+          }
         });
       })();
     </script>
