@@ -1,6 +1,6 @@
 module go-firebase-ssr-chat
 
-go 1.25.8
+go 1.22
 
 require (
 	cloud.google.com/go/firestore v1.22.0
