@@ -52,7 +52,7 @@
           const msgs = (root || document).querySelectorAll(".msg");
           const qn = q.toLowerCase();
           msgs.forEach((msg) => {
-            const author = (msg.getAttribute("data-author") || "").toLowerCase();
+            const device = (msg.getAttribute("data-device") || "").toLowerCase();
             const textEl = msg.querySelector(".text");
             if (!textEl) return;
 
@@ -62,7 +62,7 @@
             const raw = textEl.getAttribute("data-raw") || "";
             const rawLower = raw.toLowerCase();
 
-            const matches = !qn || rawLower.includes(qn) || author.includes(qn);
+            const matches = !qn || rawLower.includes(qn) || device.includes(qn);
             msg.classList.toggle("hidden", !matches);
 
             if (!qn) {
@@ -106,6 +106,45 @@
           }
         });
 
+        function closeAllMenus(exceptEl) {
+          document.querySelectorAll(".msgmenu").forEach((menu) => {
+            if (exceptEl && menu === exceptEl) return;
+            menu.hidden = true;
+            const btn = menu.parentElement ? menu.parentElement.querySelector(".menubtn") : null;
+            if (btn) btn.setAttribute("aria-expanded", "false");
+          });
+        }
+
+        function toggleMenuFor(btn) {
+          const wrap = btn.closest(".msgactions");
+          const menu = wrap ? wrap.querySelector(".msgmenu") : null;
+          if (!menu) return;
+          const willShow = !!menu.hidden;
+          closeAllMenus(willShow ? menu : null);
+          menu.hidden = !willShow;
+          btn.setAttribute("aria-expanded", willShow ? "true" : "false");
+        }
+
+        async function shareMessage(msgEl) {
+          const device = (msgEl.getAttribute("data-device") || "").trim() || "Web";
+          const textEl = msgEl.querySelector(".text");
+          const tsEl = msgEl.querySelector(".timestamp");
+          const raw = (textEl && (textEl.getAttribute("data-raw") || textEl.textContent)) ? (textEl.getAttribute("data-raw") || textEl.textContent) : "";
+          const ts = tsEl ? (tsEl.textContent || "").trim() : "";
+          const payload = (device ? device + ": " : "") + (raw || "");
+          const withTs = ts ? payload + "\n" + ts : payload;
+
+          if (navigator.share) {
+            try {
+              await navigator.share({ text: withTs });
+              return;
+            } catch (_) {
+              // fall through to copy
+            }
+          }
+          await copyText(withTs);
+        }
+
         async function readClipboardText() {
           if (navigator.clipboard && window.isSecureContext) {
             return await navigator.clipboard.readText();
@@ -114,6 +153,27 @@
         }
 
         document.addEventListener("click", async (e) => {
+          const menuBtn = e.target && e.target.closest ? e.target.closest(".menubtn") : null;
+          if (menuBtn) {
+            toggleMenuFor(menuBtn);
+            return;
+          }
+
+          const item = e.target && e.target.closest ? e.target.closest(".menuitem") : null;
+          if (item) {
+            const action = item.getAttribute("data-action") || "";
+            const msgEl = item.closest(".msg");
+            if (action === "toggle-timestamp" && msgEl) {
+              const tsEl = msgEl.querySelector(".timestamp");
+              if (tsEl) tsEl.hidden = !tsEl.hidden;
+            }
+            if (action === "share" && msgEl) {
+              try { await shareMessage(msgEl); } catch (_) {}
+            }
+            closeAllMenus();
+            return;
+          }
+
           const btn = e.target && e.target.closest ? e.target.closest(".pastebtn") : null;
           if (!btn) return;
           const sel = btn.getAttribute("data-paste-target") || "";
@@ -132,6 +192,16 @@
           } catch (_) {
             target.focus();
           }
+        });
+
+        document.addEventListener("click", (e) => {
+          // Close menus on outside click
+          const inside = e.target && e.target.closest ? e.target.closest(".msgactions") : null;
+          if (!inside) closeAllMenus();
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") closeAllMenus();
         });
 
         function initSearchUI() {

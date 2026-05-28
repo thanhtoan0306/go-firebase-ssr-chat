@@ -2,14 +2,32 @@
   <div class="msglist">
     {{if .Messages}}
       {{range .Messages}}
-        <article class="msg" data-id="{{.ID}}" data-author="{{.Author}}">
+        <article class="msg" data-id="{{.ID}}" data-device="{{if .Device}}{{.Device}}{{else}}Web{{end}}">
           <div class="msgrow">
             <div class="msgmain">
               <div class="meta">
-                <span class="author">{{if .Author}}{{.Author}}{{else}}Anonymous{{end}}</span>
+                <span class="author">{{if .Device}}{{.Device}}{{else}}Web{{end}}</span>
                 <span class="time">{{since .CreatedAt}}</span>
+                <span class="timestamp" hidden>{{.CreatedAt.Local.Format "2006-01-02 15:04:05"}}</span>
               </div>
               <div class="text">{{.Text}}</div>
+            </div>
+
+            <div class="msgactions">
+              <button
+                class="menubtn"
+                type="button"
+                aria-label="More actions"
+                aria-haspopup="menu"
+                aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 7.25a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Zm0 6.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Zm0 6.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z"/>
+                </svg>
+              </button>
+              <div class="msgmenu" role="menu" hidden>
+                <button class="menuitem" type="button" role="menuitem" data-action="toggle-timestamp">Show timestamp</button>
+                <button class="menuitem" type="button" role="menuitem" data-action="share">Share</button>
+              </div>
             </div>
 
             <button

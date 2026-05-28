@@ -32,6 +32,7 @@ type App struct {
 type Message struct {
 	ID        string    `json:"id" firestore:"-"`
 	Author    string    `json:"author" firestore:"author"`
+	Device    string    `json:"device" firestore:"device"`
 	Text      string    `json:"text" firestore:"text"`
 	CreatedAt time.Time `json:"createdAt" firestore:"createdAt"`
 }
@@ -213,11 +214,12 @@ func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
 	if len(author) > 60 {
 		author = author[:60]
 	}
+	device := detectDevice(r.UserAgent())
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := a.addMessage(ctx, author, text); err != nil {
+	if err := a.addMessage(ctx, author, device, text); err != nil {
 		log.Printf("addMessage error: %v", err)
 		http.Error(w, "failed to send", http.StatusInternalServerError)
 		return
@@ -235,14 +237,46 @@ func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
 	}{Messages: msgs})
 }
 
-func (a *App) addMessage(ctx context.Context, author, text string) error {
+func (a *App) addMessage(ctx context.Context, author, device, text string) error {
 	m := Message{
 		Author:    author,
+		Device:    device,
 		Text:      text,
 		CreatedAt: time.Now().UTC(),
 	}
 	_, _, err := a.fs.Collection("messages").Add(ctx, m)
 	return err
+}
+
+func detectDevice(ua string) string {
+	u := strings.ToLower(strings.TrimSpace(ua))
+	if u == "" {
+		return "Web"
+	}
+
+	// Mobile OS
+	if strings.Contains(u, "iphone") || strings.Contains(u, "ipad") || strings.Contains(u, "ipod") {
+		return "iOS"
+	}
+	if strings.Contains(u, "android") {
+		return "Android"
+	}
+
+	// Desktop OS
+	if strings.Contains(u, "mac os x") || strings.Contains(u, "macintosh") {
+		return "macOS"
+	}
+	if strings.Contains(u, "windows nt") {
+		return "Windows"
+	}
+	if strings.Contains(u, "cros") {
+		return "ChromeOS"
+	}
+	if strings.Contains(u, "linux") {
+		return "Linux"
+	}
+
+	return "Web"
 }
 
 func (a *App) listMessages(ctx context.Context, limit int) ([]Message, error) {
