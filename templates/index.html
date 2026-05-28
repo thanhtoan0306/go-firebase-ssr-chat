@@ -13,6 +13,11 @@
       </div>
     </div>
     <div class="toptools">
+      <button class="iconbtn" type="button" id="openQr" aria-label="Show QR code">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M3 3h8v8H3V3Zm2 2v4h4V5H5Zm8-2h8v8h-8V3Zm2 2v4h4V5h-4ZM3 13h8v8H3v-8Zm2 2v4h4v-4H5Zm10 0h2v2h-2v-2Zm-2-2h4v4h-4v-4Zm6 0h2v6h-6v-2h4v-4Zm0 8h2v2h-2v-2Zm-4 0h2v2h-2v-2Zm0-4h2v2h-2v-2Z"/>
+        </svg>
+      </button>
       <input
         class="search"
         id="search"
@@ -52,6 +57,23 @@
   <footer class="foot">
     <a href="/messages" class="muted">Messages partial</a>
   </footer>
+</div>
+
+<div class="modal" id="qrModal" hidden aria-hidden="true">
+  <div class="modalbackdrop" data-close="1"></div>
+  <div class="modalpanel" role="dialog" aria-modal="true" aria-label="QR code">
+    <div class="modalhead">
+      <div class="modaltitle">Scan</div>
+      <button class="iconbtn" type="button" data-close="1" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M18.3 5.7a1 1 0 0 0-1.4 0L12 10.6 7.1 5.7a1 1 0 1 0-1.4 1.4l4.9 4.9-4.9 4.9a1 1 0 1 0 1.4 1.4l4.9-4.9 4.9 4.9a1 1 0 0 0 1.4-1.4L13.4 12l4.9-4.9a1 1 0 0 0 0-1.4Z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modalbody">
+      <img class="qrimg" src="/static/qr.png" alt="QR code" />
+    </div>
+  </div>
 </div>
 {{end}}
 

@@ -207,8 +207,27 @@
         });
 
         document.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") closeAllMenus();
+          if (e.key === "Escape") {
+            closeAllMenus();
+            closeQrModal();
+          }
         });
+
+        function openQrModal() {
+          const modal = document.getElementById("qrModal");
+          if (!modal) return;
+          modal.hidden = false;
+          modal.setAttribute("aria-hidden", "false");
+          try { document.body.classList.add("noscroll"); } catch (_) {}
+        }
+
+        function closeQrModal() {
+          const modal = document.getElementById("qrModal");
+          if (!modal) return;
+          modal.hidden = true;
+          modal.setAttribute("aria-hidden", "true");
+          try { document.body.classList.remove("noscroll"); } catch (_) {}
+        }
 
         function initSearchUI() {
           const input = document.getElementById("search");
@@ -273,6 +292,15 @@
           initSearchUI();
           initStickToBottom();
           applySearch(document);
+
+          const openBtn = document.getElementById("openQr");
+          if (openBtn) openBtn.addEventListener("click", openQrModal);
+          document.addEventListener("click", (e) => {
+            const modal = document.getElementById("qrModal");
+            if (!modal || modal.hidden) return;
+            const closeEl = e.target && e.target.closest ? e.target.closest("[data-close='1']") : null;
+            if (closeEl) closeQrModal();
+          });
 
           const messagesEl = document.getElementById("messages");
           if (messagesEl) {
