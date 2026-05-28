@@ -9,4 +9,9 @@ bin/
 # Env / creds
 .env
 serviceAccount.json
+firebase-service-account*.json
+firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+*.firebase-adminsdk-*.json
+*adminsdk*.json
 
