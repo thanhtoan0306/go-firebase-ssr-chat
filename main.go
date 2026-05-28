@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"embed"
+	"encoding/json"
 	"errors"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -16,9 +20,13 @@ import (
 	"google.golang.org/api/option"
 )
 
+//go:embed templates static
+var assetsFS embed.FS
+
 type App struct {
 	fs        *firestore.Client
 	templates *template.Template
+	static    http.Handler
 }
 
 type Message struct {
@@ -28,36 +36,84 @@ type Message struct {
 	CreatedAt time.Time `json:"createdAt" firestore:"createdAt"`
 }
 
-func main() {
-	ctx := context.Background()
+var (
+	initOnce sync.Once
+	appInst  *App
+	initErr  error
+)
 
-	app, err := NewApp(ctx)
-	if err != nil {
-		log.Fatal(err)
+func main() {
+	addr := envOr("ADDR", envOr("PORT", ":8080"))
+	if !strings.HasPrefix(addr, ":") {
+		addr = ":" + addr
 	}
-	defer app.fs.Close()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", app.handleIndex)
-	mux.HandleFunc("GET /messages", app.handleMessagesPartial)
-	mux.HandleFunc("POST /send", app.handleSend)
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	mux.HandleFunc("/", rootHandler)
 
-	addr := envOr("ADDR", ":8080")
 	log.Printf("listening on %s", addr)
 	if err := http.ListenAndServe(addr, securityHeaders(mux)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
 
-func NewApp(ctx context.Context) (*App, error) {
-	projectID := os.Getenv("FIREBASE_PROJECT_ID")
-	if strings.TrimSpace(projectID) == "" {
-		return nil, errors.New("missing FIREBASE_PROJECT_ID")
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/healthz" {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+		return
+	}
+
+	app, err := getApp(r.Context())
+	if err != nil {
+		log.Printf("app init error: %v", err)
+		http.Error(w, "app init: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		app.static.ServeHTTP(w, r)
+		return
+	}
+
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/":
+		app.handleIndex(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/messages":
+		app.handleMessagesPartial(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/send":
+		app.handleSend(w, r)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func getApp(ctx context.Context) (*App, error) {
+	initOnce.Do(func() {
+		appInst, initErr = newApp(ctx)
+	})
+	return appInst, initErr
+}
+
+func newApp(ctx context.Context) (*App, error) {
+	projectID := strings.TrimSpace(os.Getenv("FIREBASE_PROJECT_ID"))
+	sa := strings.TrimSpace(os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"))
+
+	if projectID == "" && sa != "" {
+		var meta struct {
+			ProjectID string `json:"project_id"`
+		}
+		if err := json.Unmarshal([]byte(sa), &meta); err == nil {
+			projectID = strings.TrimSpace(meta.ProjectID)
+		}
+	}
+
+	if projectID == "" {
+		return nil, errors.New("missing FIREBASE_PROJECT_ID (and could not derive from FIREBASE_SERVICE_ACCOUNT_JSON)")
 	}
 
 	var opts []option.ClientOption
-	if sa := strings.TrimSpace(os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")); sa != "" {
+	if sa != "" {
 		opts = append(opts, option.WithCredentialsJSON([]byte(sa)))
 	}
 
@@ -80,7 +136,13 @@ func NewApp(ctx context.Context) (*App, error) {
 			}
 			return t.Local().Format("2006-01-02 15:04")
 		},
-	}).ParseGlob("./templates/*.html")
+	}).ParseFS(assetsFS, "templates/*.html")
+	if err != nil {
+		fs.Close()
+		return nil, err
+	}
+
+	staticFS, err := fsSub(assetsFS, ".")
 	if err != nil {
 		fs.Close()
 		return nil, err
@@ -89,7 +151,15 @@ func NewApp(ctx context.Context) (*App, error) {
 	return &App{
 		fs:        fs,
 		templates: tpls,
+		static:    http.FileServer(http.FS(staticFS)),
 	}, nil
+}
+
+func fsSub(efs embed.FS, dir string) (fs.FS, error) {
+	if dir == "." || dir == "" {
+		return efs, nil
+	}
+	return fs.Sub(efs, dir)
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -98,16 +168,14 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	msgs, err := a.listMessages(ctx, 50)
 	if err != nil {
+		log.Printf("listMessages error: %v", err)
 		http.Error(w, "failed to load messages", http.StatusInternalServerError)
 		return
 	}
 
-	data := struct {
+	a.render(w, "index.html", struct {
 		Messages []Message
-	}{
-		Messages: msgs,
-	}
-	a.render(w, "index.html", data)
+	}{Messages: msgs})
 }
 
 func (a *App) handleMessagesPartial(w http.ResponseWriter, r *http.Request) {
@@ -116,11 +184,11 @@ func (a *App) handleMessagesPartial(w http.ResponseWriter, r *http.Request) {
 
 	msgs, err := a.listMessages(ctx, 50)
 	if err != nil {
+		log.Printf("listMessages error: %v", err)
 		http.Error(w, "failed to load messages", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	a.render(w, "messages.html", struct {
 		Messages []Message
 	}{Messages: msgs})
@@ -150,18 +218,18 @@ func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := a.addMessage(ctx, author, text); err != nil {
+		log.Printf("addMessage error: %v", err)
 		http.Error(w, "failed to send", http.StatusInternalServerError)
 		return
 	}
 
-	// HTMX-friendly: respond with updated messages partial and let the client swap it in.
 	msgs, err := a.listMessages(ctx, 50)
 	if err != nil {
+		log.Printf("listMessages error: %v", err)
 		http.Error(w, "failed to load messages", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	a.render(w, "messages.html", struct {
 		Messages []Message
 	}{Messages: msgs})
@@ -201,7 +269,6 @@ func (a *App) listMessages(ctx context.Context, limit int) ([]Message, error) {
 		out = append(out, m)
 	}
 
-	// Reverse to show oldest -> newest in UI.
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
 	}
@@ -237,10 +304,5 @@ func plural(n int, unit string) string {
 	if n == 1 {
 		return "1 " + unit + " ago"
 	}
-	return itoa(n) + " " + unit + "s ago"
+	return strconv.Itoa(n) + " " + unit + "s ago"
 }
-
-func itoa(n int) string {
-	return strconv.Itoa(n)
-}
-

@@ -43,6 +43,19 @@ Open `http://localhost:8080`.
   - `text` (string)
   - `createdAt` (timestamp)
 
+## Deploy on Vercel
+
+This repo builds on Vercel's standalone Go runtime. Templates and static files are **embedded** into the binary via `embed.FS`, so no extra config is needed for assets.
+
+In the Vercel project, set these **Environment Variables** (Production / Preview):
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON` — paste the **entire** service-account JSON as the value.
+- `FIREBASE_PROJECT_ID` *(optional)* — only needed if it can't be derived from the JSON above.
+
+Then **Redeploy**. The app listens on `$PORT` (provided by Vercel) automatically.
+
+If a request returns 500 with `app init: missing FIREBASE_PROJECT_ID …`, the env vars aren't set on Vercel yet.
+
 ## Notes on “no auth”
 
 This app has **no login**. Anyone who can reach your server can post messages.
