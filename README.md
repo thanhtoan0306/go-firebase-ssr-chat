@@ -58,11 +58,11 @@ If a request returns 500 with `app init: missing FIREBASE_PROJECT_ID …`, the e
 
 ## Firestore quota / 500 errors
 
-The UI polls `/messages` for updates. Each poll is a Firestore query, so traffic adds up quickly on the free tier.
+Each page load or refresh runs one Firestore query. There is no background polling.
 
-This app caches message lists in memory (default **8s**, override with `MESSAGES_CACHE_SECONDS`) and polls every **8s**. If Firestore returns `Quota exceeded`, the server serves the last cached list instead of a 500 when possible.
+Message lists are cached in memory briefly (default **8s**, override with `MESSAGES_CACHE_SECONDS`) to avoid duplicate reads on the same request. If Firestore returns `Quota exceeded`, the server serves the last cached list instead of a 500 when possible.
 
-If you still hit limits: wait for the daily quota reset, enable billing in Google Cloud, reduce open tabs, or increase `MESSAGES_CACHE_SECONDS` and the HTMX `every` interval in `templates/index.html`.
+If you still hit limits: wait for the daily quota reset or enable billing in Google Cloud.
 
 ## Notes on “no auth”
 

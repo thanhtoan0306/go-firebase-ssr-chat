@@ -13,6 +13,11 @@
       </div>
     </div>
     <div class="toptools">
+      <button class="iconbtn" type="button" id="refreshChat" aria-label="Refresh messages">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24l-2.12 2.12H20V4l-2.35 2.35Z"/>
+        </svg>
+      </button>
       <button class="iconbtn" type="button" id="openQr" aria-label="Show QR code">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M3 3h8v8H3V3Zm2 2v4h4V5H5Zm8-2h8v8h-8V3Zm2 2v4h4V5h-4ZM3 13h8v8H3v-8Zm2 2v4h4v-4H5Zm10 0h2v2h-2v-2Zm-2-2h4v4h-4v-4Zm6 0h2v6h-6v-2h4v-4Zm0 8h2v2h-2v-2Zm-4 0h2v2h-2v-2Zm0-4h2v2h-2v-2Z"/>
@@ -32,10 +37,7 @@
   </header>
 
   <main class="card">
-    <section class="messages" id="messages"
-      hx-get="/messages"
-      hx-trigger="every 8s"
-      hx-swap="innerHTML">
+    <section class="messages" id="messages">
       {{template "messages.html" .}}
     </section>
 
@@ -55,7 +57,7 @@
   </main>
 
   <footer class="foot">
-    <a href="/messages" class="muted">Messages partial</a>
+    <span class="muted">Refresh (F5) or use the button above for new messages</span>
   </footer>
 </div>
 

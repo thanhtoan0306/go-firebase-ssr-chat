@@ -293,6 +293,9 @@
           initStickToBottom();
           applySearch(document);
 
+          const refreshBtn = document.getElementById("refreshChat");
+          if (refreshBtn) refreshBtn.addEventListener("click", () => window.location.reload());
+
           const openBtn = document.getElementById("openQr");
           if (openBtn) openBtn.addEventListener("click", openQrModal);
           document.addEventListener("click", (e) => {
