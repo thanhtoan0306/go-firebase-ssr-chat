@@ -19,6 +19,8 @@ import (
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 //go:embed templates static
@@ -28,6 +30,13 @@ type App struct {
 	fs        *firestore.Client
 	templates *template.Template
 	static    http.Handler
+	msgCache  messageCache
+}
+
+type messageCache struct {
+	mu        sync.RWMutex
+	messages  []Message
+	fetchedAt time.Time
 }
 
 type Message struct {
@@ -171,11 +180,14 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	msgs, err := a.listMessages(ctx, 50)
+	msgs, stale, err := a.listMessagesCached(ctx, 50)
 	if err != nil {
 		log.Printf("listMessages error: %v", err)
 		http.Error(w, "failed to load messages", http.StatusInternalServerError)
 		return
+	}
+	if stale {
+		w.Header().Set("X-Chat-Stale", "1")
 	}
 
 	a.render(w, "index.html", struct {
@@ -187,11 +199,14 @@ func (a *App) handleMessagesPartial(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	msgs, err := a.listMessages(ctx, 50)
+	msgs, stale, err := a.listMessagesCached(ctx, 50)
 	if err != nil {
 		log.Printf("listMessages error: %v", err)
 		http.Error(w, "failed to load messages", http.StatusInternalServerError)
 		return
+	}
+	if stale {
+		w.Header().Set("X-Chat-Stale", "1")
 	}
 
 	a.render(w, "messages.html", struct {
@@ -228,12 +243,16 @@ func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to send", http.StatusInternalServerError)
 		return
 	}
+	a.invalidateMessageCache()
 
-	msgs, err := a.listMessages(ctx, 50)
+	msgs, stale, err := a.listMessagesCached(ctx, 50)
 	if err != nil {
 		log.Printf("listMessages error: %v", err)
 		http.Error(w, "failed to load messages", http.StatusInternalServerError)
 		return
+	}
+	if stale {
+		w.Header().Set("X-Chat-Stale", "1")
 	}
 
 	a.render(w, "messages.html", struct {
@@ -281,6 +300,70 @@ func detectDevice(ua string) string {
 	}
 
 	return "Web"
+}
+
+func messageCacheTTL() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("MESSAGES_CACHE_SECONDS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 8 * time.Second
+}
+
+func (a *App) invalidateMessageCache() {
+	a.msgCache.mu.Lock()
+	a.msgCache.fetchedAt = time.Time{}
+	a.msgCache.mu.Unlock()
+}
+
+func (a *App) listMessagesCached(ctx context.Context, limit int) ([]Message, bool, error) {
+	ttl := messageCacheTTL()
+
+	a.msgCache.mu.RLock()
+	if !a.msgCache.fetchedAt.IsZero() && time.Since(a.msgCache.fetchedAt) < ttl {
+		msgs := cloneMessages(a.msgCache.messages)
+		a.msgCache.mu.RUnlock()
+		return msgs, false, nil
+	}
+	staleMsgs := cloneMessages(a.msgCache.messages)
+	a.msgCache.mu.RUnlock()
+
+	msgs, err := a.listMessages(ctx, limit)
+	if err != nil {
+		if isQuotaExceeded(err) && len(staleMsgs) > 0 {
+			log.Printf("listMessages quota exceeded, serving cached messages")
+			return staleMsgs, true, nil
+		}
+		return nil, false, err
+	}
+
+	a.msgCache.mu.Lock()
+	a.msgCache.messages = msgs
+	a.msgCache.fetchedAt = time.Now()
+	a.msgCache.mu.Unlock()
+
+	return cloneMessages(msgs), false, nil
+}
+
+func cloneMessages(in []Message) []Message {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]Message, len(in))
+	copy(out, in)
+	return out
+}
+
+func isQuotaExceeded(err error) bool {
+	if err == nil {
+		return false
+	}
+	if st, ok := status.FromError(err); ok {
+		return st.Code() == codes.ResourceExhausted
+	}
+	s := err.Error()
+	return strings.Contains(s, "ResourceExhausted") || strings.Contains(s, "Quota exceeded")
 }
 
 func (a *App) listMessages(ctx context.Context, limit int) ([]Message, error) {

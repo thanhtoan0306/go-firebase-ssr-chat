@@ -56,6 +56,14 @@ Then **Redeploy**. The app listens on `$PORT` (provided by Vercel) automatically
 
 If a request returns 500 with `app init: missing FIREBASE_PROJECT_ID …`, the env vars aren't set on Vercel yet.
 
+## Firestore quota / 500 errors
+
+The UI polls `/messages` for updates. Each poll is a Firestore query, so traffic adds up quickly on the free tier.
+
+This app caches message lists in memory (default **8s**, override with `MESSAGES_CACHE_SECONDS`) and polls every **8s**. If Firestore returns `Quota exceeded`, the server serves the last cached list instead of a 500 when possible.
+
+If you still hit limits: wait for the daily quota reset, enable billing in Google Cloud, reduce open tabs, or increase `MESSAGES_CACHE_SECONDS` and the HTMX `every` interval in `templates/index.html`.
+
 ## Notes on “no auth”
 
 This app has **no login**. Anyone who can reach your server can post messages.
