@@ -7,6 +7,8 @@
     <title>{{block "title" .}}App{{end}}</title>
     <link rel="stylesheet" href="/static/app.css" />
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script type="application/json" id="chat-initial-errors">{{errorsJSON .Errors}}</script>
+    <script src="/static/errors.js"></script>
     <script>
       (function () {
         const SEARCH_KEY = "chat.search";

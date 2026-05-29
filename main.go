@@ -47,8 +47,34 @@ type Message struct {
 	CreatedAt time.Time `json:"createdAt" firestore:"createdAt"`
 }
 
+type chatError struct {
+	At      string `json:"at"`
+	Source  string `json:"source"`
+	Message string `json:"message"`
+}
+
 type chatView struct {
 	Messages []Message
+	Errors   []chatError
+}
+
+func newChatError(source string, err error) chatError {
+	return chatError{
+		At:      time.Now().UTC().Format(time.RFC3339),
+		Source:  source,
+		Message: err.Error(),
+	}
+}
+
+func writeChatErrorsHeader(w http.ResponseWriter, errs []chatError) {
+	if len(errs) == 0 {
+		return
+	}
+	b, err := json.Marshal(errs)
+	if err != nil {
+		return
+	}
+	w.Header().Set("X-Chat-Errors", string(b))
 }
 
 var (
@@ -83,7 +109,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("app init error: %v", err)
 		if r.Method == http.MethodGet && r.URL.Path == "/" {
-			serveChatFallback(w)
+			serveChatFallback(w, []chatError{newChatError("app", err)})
 			return
 		}
 		http.Error(w, "app init: "+err.Error(), http.StatusInternalServerError)
@@ -158,6 +184,16 @@ func newApp(ctx context.Context) (*App, error) {
 		"linkify": func(s string) template.HTML {
 			return linkifyText(s)
 		},
+		"errorsJSON": func(errs []chatError) template.JS {
+			if len(errs) == 0 {
+				return template.JS("[]")
+			}
+			b, err := json.Marshal(errs)
+			if err != nil {
+				return template.JS("[]")
+			}
+			return template.JS(b)
+		},
 	}).ParseFS(assetsFS, "templates/*.html")
 	if err != nil {
 		fs.Close()
@@ -188,7 +224,8 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	view := a.loadChatView(ctx, w)
+	view := a.loadChatView(ctx)
+	writeChatErrorsHeader(w, view.Errors)
 	a.render(w, "index.html", view)
 }
 
@@ -196,36 +233,44 @@ func (a *App) handleMessagesPartial(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	view := a.loadChatView(ctx, w)
+	view := a.loadChatView(ctx)
+	writeChatErrorsHeader(w, view.Errors)
 	a.render(w, "messages.html", view)
 }
 
-func (a *App) loadChatView(ctx context.Context, w http.ResponseWriter) chatView {
+func (a *App) loadChatView(ctx context.Context) chatView {
 	msgs, stale, err := a.listMessagesCached(ctx, 50)
 	if err != nil {
 		log.Printf("listMessages error: %v", err)
-		return chatView{}
+		return chatView{Errors: []chatError{newChatError("listMessages", err)}}
 	}
+	var errs []chatError
 	if stale {
-		w.Header().Set("X-Chat-Stale", "1")
+		errs = append(errs, newChatError("listMessages", errors.New("quota exceeded — showing cached messages")))
+		log.Printf("listMessages quota exceeded, serving cached messages")
 	}
-	return chatView{Messages: msgs}
+	return chatView{Messages: msgs, Errors: errs}
 }
 
 func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
+	var sendErrs []chatError
+
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
+		sendErrs = append(sendErrs, newChatError("send", err))
+		a.renderSendResult(w, r.Context(), sendErrs)
 		return
 	}
 
 	author := strings.TrimSpace(r.FormValue("author"))
 	text := strings.TrimSpace(r.FormValue("text"))
 	if text == "" {
-		http.Error(w, "message required", http.StatusBadRequest)
+		sendErrs = append(sendErrs, newChatError("send", errors.New("message required")))
+		a.renderSendResult(w, r.Context(), sendErrs)
 		return
 	}
 	if len(text) > 2000 {
-		http.Error(w, "message too long", http.StatusBadRequest)
+		sendErrs = append(sendErrs, newChatError("send", errors.New("message too long")))
+		a.renderSendResult(w, r.Context(), sendErrs)
 		return
 	}
 	if len(author) > 60 {
@@ -238,12 +283,22 @@ func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.addMessage(ctx, author, device, text); err != nil {
 		log.Printf("addMessage error: %v", err)
-		a.render(w, "messages.html", a.loadChatView(ctx, w))
+		sendErrs = append(sendErrs, newChatError("addMessage", err))
+		a.renderSendResult(w, ctx, sendErrs)
 		return
 	}
 	a.invalidateMessageCache()
 
-	view := a.loadChatView(ctx, w)
+	view := a.loadChatView(ctx)
+	view.Errors = append(sendErrs, view.Errors...)
+	writeChatErrorsHeader(w, view.Errors)
+	a.render(w, "messages.html", view)
+}
+
+func (a *App) renderSendResult(w http.ResponseWriter, ctx context.Context, errs []chatError) {
+	view := a.loadChatView(ctx)
+	view.Errors = append(errs, view.Errors...)
+	writeChatErrorsHeader(w, view.Errors)
 	a.render(w, "messages.html", view)
 }
 
@@ -319,7 +374,6 @@ func (a *App) listMessagesCached(ctx context.Context, limit int) ([]Message, boo
 	msgs, err := a.listMessages(ctx, limit)
 	if err != nil {
 		if isQuotaExceeded(err) && len(staleMsgs) > 0 {
-			log.Printf("listMessages quota exceeded, serving cached messages")
 			return staleMsgs, true, nil
 		}
 		return nil, false, err
@@ -387,11 +441,18 @@ func (a *App) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := a.templates.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template error: %v", err)
-		serveChatFallback(w)
+		serveChatFallback(w, []chatError{newChatError("template", err)})
 	}
 }
 
-func serveChatFallback(w http.ResponseWriter) {
+func serveChatFallback(w http.ResponseWriter, errs []chatError) {
+	writeChatErrorsHeader(w, errs)
+	errsJSON := "[]"
+	if len(errs) > 0 {
+		if b, err := json.Marshal(errs); err == nil {
+			errsJSON = string(b)
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`<!doctype html>
@@ -401,11 +462,27 @@ func serveChatFallback(w http.ResponseWriter) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chat</title>
   <link rel="stylesheet" href="/static/app.css" />
+  <script type="application/json" id="chat-initial-errors">` + errsJSON + `</script>
 </head>
 <body>
   <div class="wrap">
     <header class="top">
       <div class="brand"><div class="brandicon" aria-hidden="true"></div></div>
+      <div class="toptools">
+        <div class="errors-wrap">
+          <button class="iconbtn errors-bell" type="button" id="errorsBell" aria-label="Error log" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.25-6.77V3a1.75 1.75 0 1 0-3.5 0v1.23A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
+            <span class="errors-badge" id="errorsBadge" hidden>0</span>
+          </button>
+          <div class="errors-panel" id="errorsPanel" hidden>
+            <div class="errors-panelhead">
+              <span class="errors-paneltitle">Error log</span>
+              <button class="errors-clear" type="button" id="errorsClear">Clear</button>
+            </div>
+            <ul class="errors-list" id="errorsList"></ul>
+          </div>
+        </div>
+      </div>
     </header>
     <main class="card">
       <section class="messages" id="messages">
@@ -417,6 +494,8 @@ func serveChatFallback(w http.ResponseWriter) {
       </form>
     </main>
   </div>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/static/errors.js"></script>
 </body>
 </html>`))
 }
@@ -427,6 +506,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		w.Header().Add("Access-Control-Expose-Headers", "X-Chat-Errors, X-Chat-Stale")
 		next.ServeHTTP(w, r)
 	})
 }

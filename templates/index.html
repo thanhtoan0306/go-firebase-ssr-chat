@@ -13,6 +13,21 @@
       </div>
     </div>
     <div class="toptools">
+      <div class="errors-wrap">
+        <button class="iconbtn errors-bell" type="button" id="errorsBell" aria-label="Error log" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.25-6.77V3a1.75 1.75 0 1 0-3.5 0v1.23A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/>
+          </svg>
+          <span class="errors-badge" id="errorsBadge" hidden>0</span>
+        </button>
+        <div class="errors-panel" id="errorsPanel" hidden>
+          <div class="errors-panelhead">
+            <span class="errors-paneltitle">Error log</span>
+            <button class="errors-clear" type="button" id="errorsClear">Clear</button>
+          </div>
+          <ul class="errors-list" id="errorsList"></ul>
+        </div>
+      </div>
       <button class="iconbtn" type="button" id="refreshChat" aria-label="Refresh messages">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24l-2.12 2.12H20V4l-2.35 2.35Z"/>
