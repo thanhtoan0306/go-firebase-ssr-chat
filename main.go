@@ -47,6 +47,10 @@ type Message struct {
 	CreatedAt time.Time `json:"createdAt" firestore:"createdAt"`
 }
 
+type chatView struct {
+	Messages []Message
+}
+
 var (
 	initOnce sync.Once
 	appInst  *App
@@ -78,6 +82,10 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	app, err := getApp(r.Context())
 	if err != nil {
 		log.Printf("app init error: %v", err)
+		if r.Method == http.MethodGet && r.URL.Path == "/" {
+			serveChatFallback(w)
+			return
+		}
 		http.Error(w, "app init: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -180,38 +188,28 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	msgs, stale, err := a.listMessagesCached(ctx, 50)
-	if err != nil {
-		log.Printf("listMessages error: %v", err)
-		http.Error(w, "failed to load messages", http.StatusInternalServerError)
-		return
-	}
-	if stale {
-		w.Header().Set("X-Chat-Stale", "1")
-	}
-
-	a.render(w, "index.html", struct {
-		Messages []Message
-	}{Messages: msgs})
+	view := a.loadChatView(ctx, w)
+	a.render(w, "index.html", view)
 }
 
 func (a *App) handleMessagesPartial(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	view := a.loadChatView(ctx, w)
+	a.render(w, "messages.html", view)
+}
+
+func (a *App) loadChatView(ctx context.Context, w http.ResponseWriter) chatView {
 	msgs, stale, err := a.listMessagesCached(ctx, 50)
 	if err != nil {
 		log.Printf("listMessages error: %v", err)
-		http.Error(w, "failed to load messages", http.StatusInternalServerError)
-		return
+		return chatView{}
 	}
 	if stale {
 		w.Header().Set("X-Chat-Stale", "1")
 	}
-
-	a.render(w, "messages.html", struct {
-		Messages []Message
-	}{Messages: msgs})
+	return chatView{Messages: msgs}
 }
 
 func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
@@ -240,24 +238,13 @@ func (a *App) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.addMessage(ctx, author, device, text); err != nil {
 		log.Printf("addMessage error: %v", err)
-		http.Error(w, "failed to send", http.StatusInternalServerError)
+		a.render(w, "messages.html", a.loadChatView(ctx, w))
 		return
 	}
 	a.invalidateMessageCache()
 
-	msgs, stale, err := a.listMessagesCached(ctx, 50)
-	if err != nil {
-		log.Printf("listMessages error: %v", err)
-		http.Error(w, "failed to load messages", http.StatusInternalServerError)
-		return
-	}
-	if stale {
-		w.Header().Set("X-Chat-Stale", "1")
-	}
-
-	a.render(w, "messages.html", struct {
-		Messages []Message
-	}{Messages: msgs})
+	view := a.loadChatView(ctx, w)
+	a.render(w, "messages.html", view)
 }
 
 func (a *App) addMessage(ctx context.Context, author, device, text string) error {
@@ -400,8 +387,38 @@ func (a *App) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := a.templates.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template error: %v", err)
-		http.Error(w, "render error", http.StatusInternalServerError)
+		serveChatFallback(w)
 	}
+}
+
+func serveChatFallback(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><div class="brandicon" aria-hidden="true"></div></div>
+    </header>
+    <main class="card">
+      <section class="messages" id="messages">
+        <div class="msglist"><div class="empty">No messages yet. Say hi.</div></div>
+      </section>
+      <form class="composer" action="/" method="get">
+        <textarea class="text" name="text" placeholder="Type a message…" disabled rows="2"></textarea>
+        <button class="send" type="button" onclick="location.reload()">Refresh</button>
+      </form>
+    </main>
+  </div>
+</body>
+</html>`))
 }
 
 func securityHeaders(next http.Handler) http.Handler {
